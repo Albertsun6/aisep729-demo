@@ -19,7 +19,7 @@
 ## C 组：增量（骨架之上）
 
 - [x] T-6 CI 四 job 真跑通 ｜ SPEC-10/11/12 · plan CI 契约 ｜ 复杂度 3 ｜ 依赖 T-5 ｜ 验证：`gh run list` 显示四个 job 全绿 → **run 30601547655 四 job 全 success**（process-gates / probe-negatives / product-contract / logic-contract）
-- [x] T-7 浏览器人工 checklist（Chrome + **Safari**，后者是 ADR-003 的未验项） ｜ NFR-1 · ADR-003 ｜ 复杂度 1 ｜ 依赖 T-5 ｜ 验证：逐条勾选记录写入 review.md，Safari 结果明确（成立/不成立各有处置）→ **Chrome C1-C10 全过、零 console 报错**（见 review.md §T-7）；**Safari 未跑**——自动化被系统授权对话框阻断，已按 ADR-003 原定处置转门禁④ 人工项，且 review.md 明确"当前不得声称跨浏览器可用"
+- [x] T-7 浏览器人工 checklist（Chrome + **Safari**，后者是 ADR-003 的未验项） ｜ NFR-1 · ADR-003 ｜ 复杂度 1 ｜ 依赖 T-5 ｜ 验证：逐条勾选记录写入 review.md，Safari 结果明确（成立/不成立各有处置）→ **Chrome C1-C11 全过、零 console 报错**；**Safari 已于门禁④ 补验全过**（用户开启 Apple 事件 JS 后 osascript 实测）。ADR-003 追加记录：原判断"Safari 更严格可能拒绝 localStorage"被**证伪**，Safari 同样允许且同样共享 origin；"不得声称跨浏览器可用"的限制**已解除**（限 macOS）
 
 ## 进度与容量（复杂度点）
 
@@ -27,7 +27,7 @@
 |---|---|---|---|
 | A（spike） | 3 | 3 | ✅ 完成 |
 | B（骨架） | 12 | 12 | ✅ 完成 |
-| C（增量） | 4 | 4 | ✅ 完成（T-7 的 Safari 半边按 ADR-003 转门禁④） |
+| C（增量） | 4 | 4 | ✅ 完成（T-7 的 Safari 半边已在门禁④ 补验全过） |
 | **合计** | **19** | **19（100%）** | 阶段3 出口达成 |
 
 > 熔断信号（非点数上限）：任务验证连续失败 3 次 / spike 超时间盒 → 按 prfaq 砍序（先砍汇总页只留数字）
