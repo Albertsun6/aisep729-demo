@@ -323,6 +323,57 @@ total=$((total+1))
 if [ "$rc" != 0 ]; then echo "  ✅ BP/非0 gh 不可用时不得静默通过（实际 ${rc}）"
 else echo "  ❌ BP 在 gh 不可用时 exit 0 —— 静默通过"; fails=$((fails+1)); fi
 
+# ---------- 陷阱扫描的 vendored 排除（不能把自己的文件也放过）----------
+# 起源：装了 node_modules 后探针开始扫第三方脚本并报错。第三方代码既不拥有也改不了，
+# 本探针查的是**我们自己**的编码约定。但"排除"极易滑成"整类放过"，故双向钉死。
+echo "-- check-shell-traps vendored 排除 --"
+STW="$WORK/traps-excl"; mkdir -p "$STW/scripts" "$STW/node_modules/pkg"
+printf '#!/usr/bin/env bash\ntimeout 5 x\n' > "$STW/node_modules/pkg/vendor.sh"
+expect "陷阱扫描/0 只有 node_modules 里有陷阱时放行" 0 bash "$ROOT/scripts/check-shell-traps.sh" "$STW"
+printf '#!/usr/bin/env bash\ntimeout 5 x\n' > "$STW/scripts/ours.sh"
+expect "陷阱扫描/66 我们自己的文件有陷阱仍必抓" 66 bash "$ROOT/scripts/check-shell-traps.sh" "$STW"
+
+# ---------- SPEC-24 smoke：手册教的每条命令在新项目里必须真实可跑 ----------
+# 起源：手册与 init 的"下一步"提示都让用户在自己项目里跑 `e2e doctor`，
+# 但 bin/e2e 从未被发到目标仓 —— 新用户照做即 command not found。
+# 文档说的和脚手架发的**漂移**了，只有真跑一次干净 init 才发现。
+echo "-- SPEC-24 手册命令可执行性 smoke --"
+SMOKE="$WORK/smoke-fresh"; mkdir -p "$SMOKE"
+bash "$ROOT/bin/e2e" init "$SMOKE" >/dev/null 2>&1 || true
+
+# 从手册里抽取它教用户跑的仓内命令，逐条验证目标仓里真的有
+MAN="$ROOT/docs/implementation-manual.md"
+if [ -f "$MAN" ]; then
+  man_refs=$(grep -oE 'bash (bin|scripts|ops|tests)/[A-Za-z0-9_./-]+' "$MAN" \
+             | sed -E 's/^bash //' | sort -u)
+  smoke_bad=0; smoke_n=0
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    smoke_n=$((smoke_n+1))
+    [ -e "$SMOKE/$r" ] || { echo "  ❌ 手册教了 ${r}，但 init 没发到目标仓"; smoke_bad=$((smoke_bad+1)); }
+  done <<INNER
+$man_refs
+INNER
+  total=$((total+1))
+  if [ "$smoke_n" -lt 3 ]; then
+    echo "  ❌ 只从手册抽到 ${smoke_n} 条命令——抽取失效"; fails=$((fails+1))
+  elif [ "$smoke_bad" -eq 0 ]; then
+    echo "  ✅ 手册教的 ${smoke_n} 条命令在新项目里全部存在"
+  else
+    fails=$((fails+1))
+  fi
+
+  # doctor 必须能在目标仓真跑起来（照 init 的"下一步"提示）
+  total=$((total+1))
+  if (cd "$SMOKE" && bash bin/e2e doctor >/dev/null 2>&1); then
+    echo "  ✅ 新项目里 bash bin/e2e doctor 可执行"
+  else
+    echo "  ❌ 新项目里 doctor 跑不起来（init 的"下一步"提示是假的）"; fails=$((fails+1))
+  fi
+else
+  total=$((total+1)); echo "  ❌ 找不到手册 $MAN"; fails=$((fails+1))
+fi
+
 # ---------- 门禁台账：决定值非法必须被抓（fail-open 修复回归）----------
 # 起源：7 个阶段探针里 6 个只用 gate_status **显示**决定值，从不校验它属于契约集合。
 # 门禁④ 被填成"放行"（契约是 批准/打回）后 check-release.sh --final 判 PASS 放行，

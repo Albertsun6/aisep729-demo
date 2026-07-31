@@ -1,0 +1,318 @@
+[
+  {
+    "scene": "intro",
+    "text": "这是一个记录赌场输赢的小工具。它只有一个网页文件，双击就能打开，不用安装，也不用联网。接下来八分钟，我会把它从头到尾演一遍，也会讲清楚它的边界在哪里。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "赌场输赢记录 · 单文件网页",
+      "placement": "bottom-center",
+      "motion": "fade-in"
+    }
+  },
+  {
+    "scene": "privacy",
+    "text": "先说最重要的一点，数据存在哪。它存在你自己浏览器里，不上传任何服务器，我们也拿不到。页面底部这行小字就是这么写的，而且写得很直白。",
+    "overlay": {
+      "type": "callout",
+      "text": "数据不出本机",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "privacy2",
+    "text": "但这行字后半句同样重要：同一台机器上的其它本地网页，是能读到这些数据的。这不是我们偷懒，是浏览器打开本地文件时的固有行为。我们在文档里把它记成了明确的隐私代价，而不是含糊过去。",
+    "overlay": {
+      "type": "callout",
+      "text": "同机其它本地页可读",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "tabs",
+    "text": "界面一共三屏。记一笔，用来添加记录；流水，看每一笔的明细；汇总，看总的输赢和笔数。三个按钮切换，任何时候只有一屏是可见的。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "三屏：记一笔 · 流水 · 汇总",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "form",
+    "text": "回到记一笔这一屏。三个输入：日期已经自动填成今天，场次可以写去了哪家，金额是关键——赢了填正数，输了填负数。",
+    "overlay": {
+      "type": "callout",
+      "text": "赢正 · 输负",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "record1",
+    "text": "我们记第一笔。场次填永利，金额填五百，表示这场赢了五百。点记下。",
+    "overlay": {
+      "type": "callout",
+      "text": "记一笔：+500",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "record1done",
+    "text": "记完之后，输入框自动清空，方便你连着记下一笔。注意日期没有被清掉，因为大多数时候你会连续记同一天的几场。",
+    "overlay": {
+      "type": "callout",
+      "text": "输入框自动清空",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "record2",
+    "text": "再记一笔输的。场次填美高梅，金额填负三百。这次是输了三百，所以前面要带减号。点记下。",
+    "overlay": {
+      "type": "callout",
+      "text": "记一笔：-300",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "validate_intro",
+    "text": "接下来演一下它怎么拦住不合规的输入。这部分是这个小工具里被测试覆盖得最密的地方，一共三十三条断言在守着。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "输入校验：33 条断言",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "validate_decimal",
+    "text": "先试小数。填十二点五。这在赌场里没有意义，最小的筹码也是整数，所以直接被拦下来了，提示写着金额请填整数。",
+    "overlay": {
+      "type": "callout",
+      "text": "12.5 被拒",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "validate_sci",
+    "text": "再试一个容易被忽略的：科学计数法。填 1e3。很多程序会把它当成一千放过去，但这里被拦住了，因为校验是先看词法再转数字，不是直接调转换函数。",
+    "overlay": {
+      "type": "callout",
+      "text": "1e3 被拒",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "validate_hex",
+    "text": "十六进制同样被拦。填 0x10，不通过。还有前面带加号的、前后带空格的，都不通过。这些看起来吹毛求疵，但它们正是同类工具最常见的脏数据来源。",
+    "overlay": {
+      "type": "callout",
+      "text": "0x10 被拒",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "validate_limit",
+    "text": "金额还有上限，十亿。这个上限不是随便定的，它保证所有记录加起来仍然落在安全整数范围里，不会出现累加之后精度悄悄丢失的情况。",
+    "overlay": {
+      "type": "callout",
+      "text": "上限 10 亿",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "validate_ok",
+    "text": "把金额改回一个合法的值，八百，错误提示就消失了。校验是即时的，不需要提交之后才告诉你哪里错了。",
+    "overlay": {
+      "type": "callout",
+      "text": "合法值通过",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "validate_date",
+    "text": "日期也是必填的。我们把日期清空再点记下，它会提示请选日期，并且不会写入任何东西。这一条同样有测试守着。",
+    "overlay": {
+      "type": "callout",
+      "text": "缺日期被拦",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "record3",
+    "text": "把日期填回来，把这笔八百也记进去。现在一共有三笔：赢五百，输三百，赢八百。",
+    "overlay": {
+      "type": "callout",
+      "text": "记一笔：+800",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "list",
+    "text": "切到流水这一屏。三笔都在，按日期从新到旧排。赢的是绿色带加号，输的是红色带减号，扫一眼就能看出这一段时间的走向。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "流水：按日期倒序",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "sum",
+    "text": "切到汇总。净额是加一千，五百减三百再加八百，正好一千。下面写着共三笔。这两个数字是实时算出来的，不是存下来的，所以永远不会和明细对不上。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "净额 +1000 · 共 3 笔",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "persist_intro",
+    "text": "现在验证最关键的一件事：刷新之后数据还在不在。这是这类本地工具最容易翻车的地方，我们在两个浏览器上都实测过。",
+    "overlay": {
+      "type": "callout",
+      "text": "持久化验证",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "persist",
+    "text": "刷新页面。汇总还是加一千，还是三笔，流水里三条记录一条不少。数据是真的落在本地存储里，不是只活在这一次打开的页面里。",
+    "overlay": {
+      "type": "callout",
+      "text": "刷新后数据仍在",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "browsers",
+    "text": "顺便说浏览器。Chrome 和 Safari 我们都逐条实测过，功能一致，本地存储都能正常读写。这里要诚实：Windows、Linux 和手机端我们没有测过，所以不会声称它们能用。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "Chrome + Safari 已实测",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "darkmode",
+    "text": "界面会跟随系统的深色模式。这不是靠脚本切换的，是纯样式实现，所以不会有切换时闪一下白屏的问题。",
+    "overlay": {
+      "type": "callout",
+      "text": "深色模式自动跟随",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "limits",
+    "text": "接下来说清楚它做不到什么。清缓存会丢数据，换浏览器会丢数据，换设备也不会同步。目前没有导出按钮，需要备份的话得在开发者工具里跑一小段命令，操作手册里给了可以直接粘贴的写法。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "已知限制",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "limits2",
+    "text": "还有一条也得说：本地存储的容量上限是五兆，而这五兆是同一台机器上所有本地网页共用的，不是这个工具独占的。正常记账很难撞到，但如果撞上了，它会明确提示这次没保存成功，而不是悄悄丢掉。",
+    "overlay": {
+      "type": "callout",
+      "text": "配额是共用的",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "howbuilt",
+    "text": "最后讲讲这个小工具是怎么被造出来的。它不是随手写的，而是走完了六道门禁：立项、需求、设计、合并、发布、退役，每一道都有一份文档和一个人签字，任何一道没过，下一段流程根本启动不了。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "六道门禁全链路",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "otherkeys",
+    "text": "还有一个细节值得说。同一份本地存储里可能有别的网页写的数据，这个工具只读写自己那个带前缀的键，绝不碰别人的。这条也有测试守着，是设计时就写死的约束，不是靠自觉。",
+    "overlay": {
+      "type": "callout",
+      "text": "只碰自己的键",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "dirty",
+    "text": "如果存储里混进了不合规的记录，比如被别的程序写坏了，它不会崩，也不会把整份数据清掉，而是跳过那几条、在控制台记一笔，然后照常显示剩下的。宁可少显示，也不静默丢数据。",
+    "overlay": {
+      "type": "callout",
+      "text": "脏数据跳过而非清空",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "layers",
+    "text": "代码只有一百八十多行，但被硬性分成三层：纯逻辑层、存储层、界面层。纯逻辑层不许碰浏览器接口，界面层不许直接碰存储。这个分层不是靠约定，是有探针在每次提交时检查的，越界就合并不进去。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "三层契约由探针守",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "singlefile",
+    "text": "整个产品必须是单个文件、不许有任何外部引用、不许超过四百行。这三条同样是探针在守。听起来像自我限制，但它换来的是双击即用、不联网、也没有任何第三方代码能偷偷跑起来。",
+    "overlay": {
+      "type": "callout",
+      "text": "单文件 · 零外链 · ≤400 行",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "review",
+    "text": "合并这一关的规矩是：只有能跑出结果的确定性检查才有权拦住合并，人工智能给的意见默认只是建议。这条看起来限制了人工智能，其实是在保护它的价值——它提的问题只要能写成一条会失败的测试，就自动升级成硬拦。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "三通道评审契约",
+      "placement": "bottom-center"
+    }
+  },
+  {
+    "scene": "hetero",
+    "text": "发布前的生产就绪评审做了一次对抗验证：先由几个独立的检查方各自取证，再让另一批独立检查方逐条去证伪。二十一条结论里有十六条被推翻，绝大多数不是结论错，而是证据不实或者说得太满。",
+    "overlay": {
+      "type": "callout",
+      "text": "21 条里 16 条被证伪",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "rollback",
+    "text": "回滚预案也做了实跑演练，结果发现了一件更根本的事：这个产品根本没有可以回退的上一个版本，因为产品文件从头到尾只提交过一次。所以回滚方案被改写成向前修复，而不是写一句好听的回退到上一版。",
+    "overlay": {
+      "type": "callout",
+      "text": "没有上一版可回滚",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "distributed",
+    "text": "还有一个改不掉的事实：已经下载到用户手上的那份文件，仓库这边做任何操作都影响不了它。这一条也是实跑验证出来的，被明确写进了不可逆点，而不是留给用户自己去发现。",
+    "overlay": {
+      "type": "callout",
+      "text": "已分发副本不可逆",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "howbuilt2",
+    "text": "这个过程本身抓到了不少真问题。比如有一次分支保护看起来配好了、检查项也全是绿的，实际上还是能直接推上去；还有一次评审工具本来是用来防漏检的，结果它自己在四种情况下什么都没检查就通过了。",
+    "overlay": {
+      "type": "callout",
+      "text": "门禁抓到的真缺陷",
+      "placement": "top-right"
+    }
+  },
+  {
+    "scene": "outro",
+    "text": "这些坑都被写成了会失败的测试留在仓库里，下次再犯会当场被拦住。这也是这套流程真正的价值：不是流程图画得好看，而是每一条结论背后都有一个跑得起来的验证。演示到这里，谢谢观看。",
+    "overlay": {
+      "type": "lower-third",
+      "text": "每条结论都有可执行验证",
+      "placement": "bottom-center"
+    }
+  }
+]

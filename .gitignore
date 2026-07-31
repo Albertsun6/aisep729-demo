@@ -5,3 +5,6 @@
 # 探针/评审的临时产物
 /tmp-*
 *.log
+
+# 演示视频工程（node_modules + 中间产物 + 成片，不入仓）
+demo-video/
