@@ -1,0 +1,64 @@
+name: quality-gates
+
+# 外环质量门禁（宪法 C3：只有 required check 才是硬策略）
+# ⚠️ required check 对应 **job**（check-run）而非 step——异构评审 #11 指出原设计把
+#    两个产品门禁写成同一 job 内的 step，根本无法分别设为 required。故拆独立 job。
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FEATURE: win-loss-log
+
+jobs:
+  process-gates:            # 流程制品门禁（阶段0-2 探针 + 平台自审）
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: 平台自审 · 结构
+        run: bash scripts/check-structure.sh
+      - name: 平台自审 · bash 高危写法
+        run: bash scripts/check-shell-traps.sh
+      - name: 阶段0 探针（立项）
+        run: bash .claude/skills/e2e-discovery/scripts/check-prfaq.sh "specs/$FEATURE/prfaq.md"
+      - name: 阶段1 探针（需求）
+        run: bash .claude/skills/e2e-requirements/scripts/check-prd.sh "specs/$FEATURE/"
+      - name: 阶段2 探针（设计）
+        run: bash .claude/skills/e2e-design/scripts/check-design.sh "specs/$FEATURE/"
+
+  probe-negatives:          # 探针可证伪性（宪法 C13）
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash tests/probe-negative/run.sh
+
+  product-contract:         # 产品交付物契约（SPEC-10/11/12）——阶段3 起必须真跑
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: 单文件契约（无外链 / ≤400 行 / 分层守卫）
+        run: |
+          # 阶段3 前 index.html 尚不存在：此时 job 仍须存在（供分支保护登记 required），
+          # 但一旦进入阶段3（tasks.md 存在），缺文件即 FAIL——不再静默跳过（异构评审 #11）
+          if [ -f index.html ]; then
+            bash scripts/check-single-file.sh
+          elif [ -f "specs/$FEATURE/tasks.md" ]; then
+            echo "::error::已进入阶段3 但 index.html 不存在"; exit 1
+          else
+            echo "阶段3 未开始，index.html 尚不存在（设计阶段允许）"
+          fi
+
+  logic-contract:           # 逻辑契约测试（SPEC-1~5/7/9）
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: 逻辑测试（抽块 + node 断言）
+        run: |
+          if [ -f tests/logic.test.sh ]; then
+            bash tests/logic.test.sh
+          elif [ -f "specs/$FEATURE/tasks.md" ]; then
+            echo "::error::已进入阶段3 但 tests/logic.test.sh 不存在"; exit 1
+          else
+            echo "阶段3 未开始，逻辑测试尚不存在（设计阶段允许）"
+          fi

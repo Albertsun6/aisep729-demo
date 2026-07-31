@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>赌场输赢记录</title>
+<style>
+:root{--bg:#faf9f7;--fg:#1c1917;--mut:#78716c;--line:#e7e5e4;--win:#15803d;--lose:#b91c1c;--accent:#0f766e}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1917;--fg:#f5f5f4;--mut:#a8a29e;--line:#44403c;--win:#4ade80;--lose:#f87171;--accent:#5eead4}}
+*{box-sizing:border-box}
+body{margin:0;padding:1rem;font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:var(--bg);color:var(--fg);max-width:640px;margin-inline:auto}
+h1{font-size:1.25rem;margin:.25rem 0 1rem}
+nav{display:flex;gap:.5rem;margin-bottom:1rem}
+nav button{flex:1;padding:.6rem;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:.5rem;cursor:pointer;font-size:.9rem}
+nav button[aria-current="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+section{display:none}section.on{display:block}
+label{display:block;margin:.75rem 0 .25rem;font-size:.85rem;color:var(--mut)}
+input{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:.5rem;background:var(--bg);color:var(--fg);font-size:1rem}
+button.primary{width:100%;margin-top:1rem;padding:.75rem;border:0;border-radius:.5rem;background:var(--accent);color:#fff;font-size:1rem;cursor:pointer}
+.err{color:var(--lose);font-size:.85rem;min-height:1.2em;margin-top:.5rem}
+.row{display:flex;justify-content:space-between;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--line)}
+.row small{color:var(--mut)}
+.amt{font-variant-numeric:tabular-nums;font-weight:600}
+.win{color:var(--win)}.lose{color:var(--lose)}
+.empty{color:var(--mut);text-align:center;padding:2rem 0}
+.big{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums;text-align:center;margin:1rem 0}
+.note{font-size:.75rem;color:var(--mut);margin-top:1.5rem;border-top:1px solid var(--line);padding-top:.75rem}
+</style>
+</head>
+<body>
+<h1>赌场输赢记录</h1>
+<nav>
+  <button data-tab="add" aria-current="true">记一笔</button>
+  <button data-tab="list">流水</button>
+  <button data-tab="sum">汇总</button>
+</nav>
+
+<section id="add" class="on">
+  <label for="d">日期</label><input type="date" id="d" required>
+  <label for="v">场次</label><input type="text" id="v" placeholder="如：永利 / 周五场">
+  <label for="a">金额（整数，赢为正、输为负）</label><input type="text" id="a" inputmode="numeric" placeholder="如 500 或 -300">
+  <button class="primary" id="save">记下</button>
+  <p class="err" id="err"></p>
+</section>
+
+<section id="list"><div id="rows"></div></section>
+
+<section id="sum">
+  <div class="big" id="net">—</div>
+  <p style="text-align:center;color:var(--mut)" id="cnt"></p>
+</section>
+
+<p class="note">数据存在本机浏览器，不上传任何服务器。注意：同机其它本地网页可读（file:// 共享存储，见 ADR-003）；清缓存或换浏览器会丢失。</p>
+
+<script type="text/x-e2e-layer" id="src-logic">
+/* ==== LAYER:LOGIC:BEGIN ==== */
+// 纯函数区：不触碰浏览器 API 与持久化；块末 return 导出（测试 ABI）
+var MAX_ABS = 1000000000; // 单笔上限，保证累计仍在安全整数内（SPEC-5）
+
+function validateAmount(raw) {
+  if (typeof raw !== 'string') return false;
+  if (!/^-?\d+$/.test(raw)) return false;              // 词法：不用 Number.isInteger（1e3/0x10 会误过）
+  var n = Number(raw);
+  if (!Number.isSafeInteger(n)) return false;
+  return Math.abs(n) <= MAX_ABS;
+}
+function isRecordV1(r) {
+  return !!r && r.schemaVersion === 1 && typeof r.id === 'string'
+    && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date)
+    && typeof r.venue === 'string'
+    && Number.isSafeInteger(r.amount) && Math.abs(r.amount) <= MAX_ABS;
+}
+function makeRecord(date, venue, amountRaw, id) {
+  return { schemaVersion: 1, id: id, date: date, venue: venue, amount: Number(amountRaw) };
+}
+function sortRecords(list) {
+  return list.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+}
+function netTotal(list) {
+  return list.reduce(function (s, r) { return s + r.amount; }, 0);
+}
+return { validateAmount: validateAmount, isRecordV1: isRecordV1, makeRecord: makeRecord,
+         sortRecords: sortRecords, netTotal: netTotal, MAX_ABS: MAX_ABS };
+/* ==== LAYER:LOGIC:END ==== */
+</script>
+
+<script type="text/x-e2e-layer" id="src-store">
+/* ==== LAYER:STORE:BEGIN ==== */
+// 存储区：函数接受注入的 store（生产传浏览器包装，测试传内存 Map）
+// 持久化 API 引用只在函数体内（顶层求值会让抽块测试炸，预审 B1）
+var KEY = 'e2e.winLossLog.v1';   // ADR-003：file:// 共享 origin，须带命名空间前缀
+
+function browserStore() {
+  return {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+  };
+}
+// isValid 由调用方注入（**块自包含**：不引用任何块外符号——测试 ABI 硬约束）
+function load(store, isValid) {
+  var raw = store.get(KEY);
+  if (raw === null) return { records: [], skipped: 0 };
+  var parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (e) { return { records: [], skipped: 0, parseError: true }; }   // 不覆写原数据
+  if (!Array.isArray(parsed)) return { records: [], skipped: 0, parseError: true };
+  var good = [], skipped = 0;
+  for (var i = 0; i < parsed.length; i++) {
+    if (isValid(parsed[i])) good.push(parsed[i]); else skipped++;
+  }
+  return { records: good, skipped: skipped };
+}
+function save(store, records) {
+  return store.set(KEY, JSON.stringify(records));   // 只写自己的键，绝不碰他人键（SPEC-3b）
+}
+return { load: load, save: save, browserStore: browserStore, KEY: KEY };
+/* ==== LAYER:STORE:END ==== */
+</script>
+
+<script type="text/x-e2e-layer" id="src-ui">
+/* ==== LAYER:UI:BEGIN ==== */
+// UI 区（含控制器职责）：调 LOGIC 计算校验、调 STORE 读写；不直接碰持久化 API
+(function () {
+  var L = window.__E2E_LOGIC, S = window.__E2E_STORE, store = S.browserStore();
+  var $ = function (id) { return document.getElementById(id); };
+  var state = S.load(store, L.isRecordV1);
+  if (state.skipped) console.warn('[win-loss-log] 跳过 ' + state.skipped + ' 条不合规记录');
+  if (state.parseError) console.warn('[win-loss-log] 存储内容无法解析，已保留原数据未覆写');
+
+  function fmt(n) { return (n > 0 ? '+' : '') + n; }
+  function render() {
+    var sorted = L.sortRecords(state.records), box = $('rows');
+    box.textContent = '';
+    if (!sorted.length) { var p = document.createElement('p'); p.className = 'empty'; p.textContent = '还没有记录，去「记一笔」吧'; box.appendChild(p); }
+    sorted.forEach(function (r) {
+      var d = document.createElement('div'); d.className = 'row';
+      var left = document.createElement('div'); left.textContent = r.date;
+      var s = document.createElement('small'); s.textContent = r.venue ? '　' + r.venue : ''; left.appendChild(s);
+      var right = document.createElement('div'); right.className = 'amt ' + (r.amount >= 0 ? 'win' : 'lose'); right.textContent = fmt(r.amount);
+      d.appendChild(left); d.appendChild(right); box.appendChild(d);
+    });
+    var net = L.netTotal(state.records);
+    $('net').textContent = fmt(net); $('net').className = 'big ' + (net >= 0 ? 'win' : 'lose');
+    $('cnt').textContent = '共 ' + state.records.length + ' 笔';
+  }
+  $('save').addEventListener('click', function () {
+    var date = $('d').value, venue = $('v').value.trim(), raw = $('a').value.trim();
+    if (!date) { $('err').textContent = '请选日期'; return; }
+    if (!L.validateAmount(raw)) { $('err').textContent = '金额请填整数（赌场无分）；上限 ' + L.MAX_ABS; return; }
+    $('err').textContent = '';
+    state.records.push(L.makeRecord(date, venue, raw, String(Date.now())));
+    if (!S.save(store, state.records)) $('err').textContent = '⚠️ 本次数据未能保存（存储不可用）';
+    $('a').value = ''; $('v').value = ''; render();
+  });
+  document.querySelectorAll('nav button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('nav button').forEach(function (x) { x.setAttribute('aria-current', 'false'); });
+      b.setAttribute('aria-current', 'true');
+      document.querySelectorAll('section').forEach(function (s) { s.classList.remove('on'); });
+      document.getElementById(b.dataset.tab).classList.add('on');
+    });
+  });
+  $('d').valueAsDate = new Date();
+  render();
+})();
+/* ==== LAYER:UI:END ==== */
+</script>
+
+<script>
+// bootstrap：与 tests/logic.test.sh 使用**完全相同**的加载方式（new Function + "use strict"）
+// —— 测的就是跑的，不是两套路径（ADR-002 选项 A）
+(function () {
+  var run = function (id) {
+    return new Function('"use strict";' + document.getElementById(id).textContent)();
+  };
+  window.__E2E_LOGIC = run('src-logic');
+  window.__E2E_STORE = run('src-store');
+  run('src-ui');
+})();
+</script>
+</body>
+</html>
