@@ -1,0 +1,7 @@
+# 本地权限覆盖：可能放宽 allow 规则，绝不入库（security 评审：settings.local 未被忽略）
+.claude/settings.local.json
+# macOS
+.DS_Store
+# 探针/评审的临时产物
+/tmp-*
+*.log
