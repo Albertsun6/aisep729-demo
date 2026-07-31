@@ -370,8 +370,13 @@ INNER
   else
     echo "  ❌ 新项目里 doctor 跑不起来（init 的"下一步"提示是假的）"; fails=$((fails+1))
   fi
+elif [ -f "$ROOT/bin/e2e" ] && [ -d "$ROOT/specs/platform-pilot" ]; then
+  # 平台仓本该有手册却没有 —— 这是真缺失，必须响亮失败
+  total=$((total+1)); echo "  ❌ 平台仓缺手册 $MAN"; fails=$((fails+1))
 else
-  total=$((total+1)); echo "  ❌ 找不到手册 $MAN"; fails=$((fails+1))
+  # 业务仓不含手册（手册是平台仓交付物，不随脚手架分发）—— 属平台专属能力，
+  # 与 bin/e2e 同一处理方式。判据是"本仓有没有这个能力"，不是"找不到就算了"。
+  echo "  ⏭  跳过（本仓无实施手册，属平台专属交付物）"
 fi
 
 # ---------- 门禁台账：决定值非法必须被抓（fail-open 修复回归）----------
