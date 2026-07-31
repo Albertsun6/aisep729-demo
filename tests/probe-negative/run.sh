@@ -323,6 +323,36 @@ total=$((total+1))
 if [ "$rc" != 0 ]; then echo "  ✅ BP/非0 gh 不可用时不得静默通过（实际 ${rc}）"
 else echo "  ❌ BP 在 gh 不可用时 exit 0 —— 静默通过"; fails=$((fails+1)); fi
 
+# ---------- 门禁台账：决定值非法必须被抓（fail-open 修复回归）----------
+# 起源：7 个阶段探针里 6 个只用 gate_status **显示**决定值，从不校验它属于契约集合。
+# 门禁④ 被填成"放行"（契约是 批准/打回）后 check-release.sh --final 判 PASS 放行，
+# 直到门禁⑤ 入口才炸。台账层 fail-open —— 写错一个词能过自己那道门。
+echo "-- 门禁决定值合法性（gate_assert_legal）--"
+GW="$WORK/gatelegal"; mkdir -p "$GW"
+mk_prfaq() {  # mk_prfaq <决定值>
+  printf -- '# PRFAQ：t\n\n## 假设陈述\nx\n\n## Appetite\nx\n\n## 熔断线\nx\n\n## 深坑\nx\n\n## No-gos\nx\n\n## FAQ\nQ: a\nA: b\n\n---\n门禁⓪ 记录：\n- 批准人：tester\n- 决定：%s\n- 日期：2026-01-01\n- 备注：t\n' "$1" > "$GW/prfaq.md"
+}
+P0G="$ROOT/.claude/skills/e2e-discovery/scripts/check-prfaq.sh"
+
+for bad in 放行 批准 随便写; do
+  mk_prfaq "$bad"
+  total=$((total+1))
+  if bash "$P0G" "$GW/prfaq.md" 2>&1 | grep -q "决定值非法"; then
+    echo "  ✅ 门禁⓪ 拒绝非法决定值「${bad}」"
+  else
+    echo "  ❌ 门禁⓪ 放过了非法决定值「${bad}」——台账 fail-open 复发"; fails=$((fails+1))
+  fi
+done
+for good in go modify kill; do
+  mk_prfaq "$good"
+  total=$((total+1))
+  if bash "$P0G" "$GW/prfaq.md" 2>&1 | grep -q "决定值非法"; then
+    echo "  ❌ 门禁⓪ 误判合法值「${good}」为非法"; fails=$((fails+1))
+  else
+    echo "  ✅ 门禁⓪ 接受合法值「${good}」"
+  fi
+done
+
 # ---------- 三通道契约：block 只能来自 deterministic（改门禁探针后的回归）----------
 # 起源：check-review.sh 原用**整行子串匹配**判违规，于是一条 source=deterministic
 # 的 finding 只要在「提出方」列写了 llm-advisory 就被误判。改为按列解析后，
