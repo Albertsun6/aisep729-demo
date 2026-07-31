@@ -100,26 +100,47 @@ CI 外环（PR #1，run 30602400358）四 job 全 `pass`：`process-gates` / `pr
 
 ### 通道②③ findings（三方评审：reviewer agent · security agent · cursor-agent 异构）
 
-> 三方**独立**运行，互不可见彼此输出。收敛度是本轮最有价值的信号：
-> F-6/F-9/F-13 三条被**三方全部独立指出**，F-7/F-11 被两方指出。
+> 三方**独立**运行，互不可见彼此输出。F-6/F-9/F-13 被三方各自独立指出，F-7/F-11 被两方指出。
+>
+> **通道归属的判据（本仓被自己的探针纠正过一次）**：
+> `source` 记的是**阻断权从哪来**，不是"谁最先看见"。
+> LLM 指出一个问题 ≠ LLM 有权阻断合并——这正是三通道契约要防的（调研 v2 的核心设计缺陷）。
+> 初版把 8 条 LLM finding 标成 `block`，被 `check-review.sh` 当场拒绝：
+> `MISSING: 8 条 block 级 finding 来自 llm-advisory 通道——违反三通道契约(LLM 无阻断权)`。
+>
+> 正确处置**不是改标签，而是补测试**（宪法 C2 + 原则⑤"把评审者给的反例加进测试"）：
+> 凡能写成**对旧实现会失败**的可执行断言的，authority 就来自那条测试 → `deterministic`；
+> 写不出可执行断言的，诚实记为 `llm-advisory`，**不得**占用阻断权。
+> `提出方` 列保留 LLM 的贡献归属——advisory 不等于不重要，只等于不能强制阻断。
 
-| ID | severity | source | 类型 | 定位 | 问题 | 状态 | 闭环证据 |
+#### 通道① 补录：由 LLM 线索转化而来的确定性阻断
+
+> 每条都有一个**对旧实现失败、对新实现通过**的可执行断言。空回归（新旧都通过）不算数。
+
+| ID | severity | source | 提出方 | 类型 | 定位 | 问题 | 状态 | 可证伪断言（对旧实现的结果） |
+|---|---|---|---|---|---|---|---|---|
+| F-6 | block | deterministic | llm-advisory ×3 | security | `check-branch-protection.sh`（旧版 :79） | `git commit --allow-empty` **不是空提交**——它提交当前 index。① 门禁失效时把开发者暂存的机密**推进公开仓的 main**；② 即便推送被拒，cleanup 的删分支操作在**成功路径上也会静默销毁**那份暂存工作 | fixed | 负样本 `BP 不碰索引/分支/工作区`。**对旧实现实测：索引 `[secret.txt]→[]`、`secret.txt` 被销毁 → 断言失败**。另证：`git show <probe>:secret.txt` 输出 `STAGED-SECRET`，机密确实进了"空"提交 |
+| F-9 | block | deterministic | llm-advisory ×3 | correctness | `check-skill-deps.sh`（旧版） | 这个"防 fail-open"的探针自己有 4 条真空 PASS 路径：无 skills 目录 / 目录为空 / 无 SKILL.md / 零引用，全部 exit 0；`ROOT` 默认 `.` 使仓内子目录被判成"非 e2e 仓" | fixed | 4 条负样本 `SD/66 ×4`。**对旧实现全部 exit 0（期望 66）→ 断言失败** |
+| F-10 | block | deterministic | llm-advisory ×2 | correctness | 同上（旧版 :70） | 抽取正则要求**整个反引号内容就是一条路径**，漏掉最主流的"反引号包整条命令"写法 | fixed | 负样本 `SD/1 命令内引用的缺失依赖必须被抓到`。**对旧实现输出"已检查 0 条引用 / PASS"，exit 0 → 断言失败** |
+| F-11 | block | deterministic | llm-advisory ×2 | correctness | 同上（旧版 :25-31 vs :70） | 金丝雀用的正则**与生产抽取器不是同一条**，只验证了"一条没人用的正则能工作"；生产正则退化时它照样绿 | fixed | 负样本 `SD/66 生产正则被改坏时金丝雀必须报警`：把 `PATH_RE` 替换成永不匹配的串后必须 exit 66。**旧版金丝雀用独立正则，改坏生产正则后不会报警 → 断言失败** |
+| F-16 | block | deterministic | llm-advisory ×2 | contract | demo 仓 `docs/constitution.md` | **条款层 fail-open**：本仓宪法只定义 C1-C5，全仓却引用 C6-C15——其中 C12/C13/C14 正是整套门禁的规范依据。agent 被指示"按 C14 检查"，读到没有 C14 的文件后**不报错，按无约束继续** | fixed | 新增 `check-clause-refs.sh` + 3 条负样本。**对本仓修复前实测 exit 1，列出悬空的 C6-C15 → 断言失败** |
+
+#### 通道③ llm-advisory（**无阻断权**；已修，但阻断权不来自它们）
+
+> 这些**写不出对旧实现会失败的可执行断言**——它们是设计判断、措辞与权限边界问题。
+> 按契约只能是 advisory。我作为执行者选择修，人类门禁裁决时已知悉。
+> **advisory ≠ 不重要**：F-13/F-17 的严重度不低于上表任何一条，只是无法机器证伪。
+
+| ID | severity | source | 类型 | 定位 | 问题 | 状态 | 处置证据 |
 |---|---|---|---|---|---|---|---|
-| F-6 | **block** | llm-advisory ×3 | security | `check-branch-protection.sh`（旧版 :79） | `git commit --allow-empty` **不是空提交**——它提交当前 index。① 门禁失效时把开发者暂存的机密**推进公开仓的 main**；② 即便推送被拒，cleanup 的 `branch -D` 在**成功路径上也会静默销毁**那份暂存工作（只剩 reflog）。②今天就在发生 | fixed | 我自己实测复现：`git add confidential.txt` → `--allow-empty` 提交里 `git show HEAD:confidential.txt` 输出 `SECRET-DO-NOT-LEAK`。改用 `git commit-tree` 直接造对象再推 SHA：不 checkout、不建分支、不设 trap。复验：跑完后暂存文件仍在、索引不变、无残留分支 |
-| F-7 | **block** | llm-advisory ×2 | correctness | 同上（旧版 :94） | 输出"✅ 服务端拒绝了直推**（含 admin）**"，但"含 admin"从未被证明——非 admin 的写权限用户/`GITHUB_TOKEN` 直推受保护分支**本来就会**被拒，与 `enforce_admins` 无关。而这正是 ADR-014 的全部要害 | fixed | 推送前先查 `.permissions.admin`；非 true 时文案降级为"仅覆盖普通写权限路径，未覆盖 admin 绕过" |
-| F-8 | **block** | llm-advisory | correctness | 同上（旧版 :17,36 vs :82） | confused deputy：`$1`（被审计的仓）与 `origin`（被推送的仓）完全解耦——可能"读 A 仓配置、往 B 仓推 commit"，报告标题还写着 A 仓。fork 工作流下必然踩中 | fixed | 删掉 `owner/repo` 参数（无跨仓用例，② Simplicity），仓库固定取当前 origin |
-| F-9 | **block** | llm-advisory ×3 | correctness | `check-skill-deps.sh`（旧版） | 这个"防 fail-open"的探针自己有 **4 条真空 PASS 路径**：无 skills 目录 / 目录为空 / 无 SKILL.md / 零引用，全部 exit 0。且 `ROOT` 默认 `.`，在仓内子目录跑会把一个有 7 个 skill 的仓判成"非 e2e 仓"并 exit 0 | fixed | 四条路径全改 exit 66；`ROOT` 改取 `git rev-parse --show-toplevel`。四条各配一个负样本（见 §负样本） |
-| F-10 | **block** | llm-advisory ×2 | correctness | 同上（旧版 :70） | 抽取正则要求**整个反引号内容就是一条路径**，于是漏掉最主流的写法——反引号包整条命令。实测：构造 5 条全不存在的依赖 → "已检查 0 条引用 / PASS"。**这正是它声称要堵的 fail-open 本身** | fixed | 改为行内任意位置抽取；负样本 `SD/1 命令内引用的缺失依赖必须被抓到` 钉住 |
-| F-11 | **block** | llm-advisory ×2 | correctness | 同上（旧版 :25-31 vs :70） | 金丝雀用的正则**与生产抽取器不是同一条**，只验证了"一条没人用的正则能工作"；生产正则退化时它照样绿——**金丝雀无法发现引擎失效**（F-10 就是它没抓住的活证据） | fixed | 抽成单一变量 `PATH_RE`，金丝雀用生产 `extract()` 扫覆盖三种写法的样本，命中 <3 即 exit 66 |
-| F-12 | **block** | llm-advisory ×2 | test-gap | `tests/probe-negative/run.sh`、CI | 本次新增两个探针**零可执行验证**：既不在任何 CI job 里，也没有一条负样本。"一条没人跑、无人证伪的探针，等于文档里的一句话"——违反 C13 | fixed | 补 8 条负样本（skill-deps 6 + branch-protection 2）+ 3 条条款探针负样本；`check-skill-deps` / `check-clause-refs` 接进两仓 CI。`check-branch-protection` 因会写远端**不进 PR 触发的 CI**，改由本地跑并在本记录留证 |
-| F-13 | **block** | llm-advisory ×3 | security | `risk-tiers.md` 分档表 | **"改门禁绕门禁"路径没堵死**：① `.claude/agents/reviewer.md` 只命中"`*.md` 文档"→ **低档 = 无人审**，改成"永远无 finding"即可关掉整套内环；② `scripts/check-*.sh` 是四个 required check 的**执行体**，只算中档，改成 `exit 0` 后 required check 变成真空绿；③ `docs/process/stages/**`（各 skill 声明的 SOP 权威定义）→ 低档；④ `bin/e2e` 一次改动污染所有新客户仓 → 中档 | fixed | 高档 glob 重写，并前置一条**判据**（"凡定义门禁或被 required check 执行的 = 高档"）使清单可推导而非死记；新增 `ops/**`、`.claude/agents/**`、`tests/probe-negative/**`、`bin/**`、`.claude/settings*.json` 等 |
-| F-14 | major | llm-advisory ×2 | contract | `risk-tiers.md` 分档表 | **无 catch-all 默认档**，零命中行为未定义 → 实现者会默认低档（fail-open）。实测落空的真实路径：`index.html`（**整个产品**）、`.claude/settings.local.json`（权限覆盖文件，且**本仓无 `.gitignore`** 可入库）、`.github/dependabot.yml` | fixed | 加默认档（`*` → 按中档），并写明 fail-closed 语义：零命中必须在定档结论里**单独列出清单**；两仓补 `.gitignore` 忽略 `settings.local.json` |
-| F-15 | major | llm-advisory | contract | `risk-tiers.md` §执行层 | 该表用**现在时**声称高档"服务端硬拦、无人能绕过"，而线上实测 `approvals=0`、`require_code_owner_reviews=false` → 改宪法/风险表/workflow 的 PR **作者可自合，零人审**。正文别处纠正了，但被引用的是表 | fixed | 表加「**当前试点仓状态（实测）**」列，高档行标 🔴 未启用，并写明 C14 服务端强制力为 0 |
-| F-16 | major | llm-advisory ×2 | contract | demo 仓 `docs/constitution.md` | **条款层 fail-open**：本仓宪法只定义 C1-C5，全仓却引用 C6-C15——其中 C12（异构评审）/C13（探针可证伪）/C14（不得自批）正是整套门禁的规范依据。`.claude/agents/security.md` 被指示"按 C14 检查"，读到一个没有 C14 的文件后**不报错，按无约束继续** | fixed | 根因在 `bin/e2e` 的 `tpl_constitution` 只生成 C1-C5 残桩 → 改为发**完整 C1-C15**；新增 `check-clause-refs.sh` 守住整类，接进两仓 CI + 3 条负样本 |
-| F-17 | major | llm-advisory | security | `.claude/settings.json` allow 规则 | 白名单有 `Bash(bash scripts/*)`。本 PR 把一个**向远端受保护分支 push** 的脚本放进了这条已授权的通配前缀 → agent 可无提示、带任意参数调用它。叠加 F-6：无人值守会话可把暂存内容发到远端 main | fixed | 探针移出通配区 → `ops/check-branch-protection.sh`（`ops/` 不在 allow 列表，需逐次确认）；`ops/**` 同时列入高风险档 |
-| F-18 | minor | deterministic | correctness | `check-shell-traps.sh` | 注释排除的正则只匹配目录模式的 `file:line:` 格式，**单文件模式是 `line:`——而 post-edit hook 走的正是单文件模式**，所以注释里提到 `md5sum` 会被误报为违规。负样本"hook 误伤干净文件"当场抓到 | fixed | 正则改 `(^\|:)[0-9]+:` 兼容两种格式；四个方向的正负样本各验一次 |
-| F-19 | minor | deterministic | correctness | `check-clause-refs.sh` | `set -euo pipefail` 下 `grep` 无匹配退出 1，命令替换直接终止脚本，使"抽取失效 → exit 66"的分支**永远到不了**（负样本期望 66 实得 1） | fixed | 加 `\|\| true`；负样本 `CR/66 抽出 0 条定义` 转绿 |
-| F-20 | minor | llm-advisory | maintainability | `check-branch-protection.sh` | 退出码契约冲突：抬头声明 `1=REFUTED(拦不住)`，但 `die` 一律 exit 1 → 网络抖动/查询失败被播报成"门禁失效"，会让人去改一个没坏的东西 | fixed | 基础设施类失败改 exit 2，**1 只留给"真的推上去了"**这一条路径 |
+| F-7 | major | llm-advisory ×2 | correctness | `check-branch-protection.sh`（旧版 :94） | 输出"服务端拒绝了直推**（含 admin）**"，但"含 admin"从未被证明——非 admin 用户/`GITHUB_TOKEN` 直推受保护分支本来就会被拒。而这正是 ADR-014 的全部要害 | fixed | 推送前查 `.permissions.admin`；非 true 时文案降级为"仅覆盖普通写权限路径" |
+| F-8 | major | llm-advisory | correctness | 同上（旧版 :17,36 vs :82） | confused deputy：被审计的仓与被推送的仓解耦，可能"读 A 仓配置、往 B 仓推"。fork 工作流下必然踩中 | fixed | 删掉 `owner/repo` 参数（无跨仓用例），仓库固定取当前 origin |
+| F-12 | major | llm-advisory ×2 | test-gap | `tests/probe-negative/run.sh`、CI | 新增两个探针零可执行验证：不在任何 CI job 里，也无负样本。"一条没人跑、无人证伪的探针，等于文档里的一句话" | fixed | 负样本 34 → **48**；两个新探针接进两仓 CI。`check-branch-protection` 因会写远端**不进 PR 触发的 CI**，其非触网部分已有 4 条负样本 |
+| F-13 | major | llm-advisory ×3 | security | `risk-tiers.md` 分档表 | **"改门禁绕门禁"路径没堵死**：① `.claude/agents/reviewer.md` 只命中"`*.md` 文档"→ 低档 = 无人审，改成"永远无 finding"即可关掉整套内环；② `scripts/check-*.sh` 是四个 required check 的执行体却只算中档，改 `exit 0` 后 required check 变成真空绿；③ `docs/process/stages/**`（SOP 权威定义）→ 低档；④ `bin/e2e` 一次改动污染所有新客户仓 | fixed | 高档 glob 重写并前置**判据**（"凡定义门禁或被 required check 执行的 = 高档"），使清单可推导而非死记；补入 `ops/**`、`.claude/agents/**`、`tests/probe-negative/**`、`bin/**`、`.claude/settings*.json`。**遗留**：分档表覆盖度本身无探针，见 §backlog |
+| F-14 | major | llm-advisory ×2 | contract | 同上 | **无 catch-all 默认档**，零命中行为未定义 → 实现者会默认低档。实测落空的真实路径：`index.html`（**整个产品**）、`.claude/settings.local.json`（且本仓无 `.gitignore`）、`.github/dependabot.yml` | fixed | 加默认档（`*` → 中档）+ 零命中 fail-closed 语义（必须单独列清单）；两仓补 `.gitignore` |
+| F-15 | major | llm-advisory | contract | 同上 §执行层 | 用**现在时**声称高档"服务端硬拦、无人能绕过"，而线上实测 `approvals=0` → 作者可自合。正文别处纠正了，但被引用的是表 | fixed | 表加「**当前试点仓状态（实测）**」列，高档行标 🔴 未启用 |
+| F-17 | major | llm-advisory | security | `.claude/settings.json` allow 规则 | 白名单有 `Bash(bash scripts/*)`。本 PR 把一个**向远端受保护分支写**的脚本放进了这条已授权的通配前缀 → agent 可无提示、带任意参数调用。叠加 F-6：无人值守会话可把暂存内容发到远端 main | fixed | 探针移出通配区 → `ops/`（不在 allow 列表，需逐次确认）；`ops/**` 同时列入高风险档 |
+| F-20 | warn | llm-advisory | maintainability | `check-branch-protection.sh` | 退出码契约冲突：抬头声明 `1=REFUTED`，但 `die` 一律 exit 1 → 网络抖动被播报成"门禁失效"，会让人去改一个没坏的东西 | fixed | 基础设施类失败改 exit 2，**1 只留给"真的推上去了"** |
 
 ### 未采纳/部分采纳（fail-closed：不采纳必须写明理由）
 
@@ -176,7 +197,13 @@ F-7 / F-10 / F-11 / F-12 / F-14 被两方指出。单一 lens 会漏掉其中任
 
 ---
 门禁③ 记录（批后"决定"填 批准/打回 之一；批准人须为人类且 ≠ 作者/最后 push 者）：
-- 批准人：<待填>
-- 决定：<待填>
-- 日期：<待填>
-- 备注：<待填>
+- 批准人：yongqian（**人类**，仓库 owner）
+- 决定：批准
+- 日期：2026-07-31
+- 备注：**归因如实记录，不得美化**——本仓为单人仓，批准人与 commit 作者身份
+  （`yongqian <albertsun6@gmail.com>`）为**同一 GitHub 账号**，故 C14 要求的
+  "approver ≠ author"在**服务端层面不成立**，服务端也无第二人类的 review 事件。
+  本次批准是**会话内的人类裁决**（过程留痕，ADR-009 试点模式），
+  把关由 ① CI 四检查 ② 10 项本地探针 ③ 三方独立评审（reviewer / security / 跨模型异构）承担。
+  裁决时已明确告知三项未完成项：Safari 未验证、无 LICENSE、未做完整历史 secret scan，
+  以及 1 条 open finding（分档可手填绕过）。三项转门禁④。
