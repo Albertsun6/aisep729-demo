@@ -255,6 +255,162 @@ fi
 
 fi
 
+# ---------- check-skill-deps 负样本（门禁③ 评审抓出的四条真空 PASS 路径）----------
+# 背景：这个探针本身是"防 fail-open"的，异构评审 + reviewer + security 三方各自
+# 独立指出它自己有多条"什么都没检查却 exit 0"的路径。以下用例把每条钉死。
+echo "-- check-skill-deps.sh --"
+SD="$ROOT/scripts/check-skill-deps.sh"
+
+SDW="$WORK/sd-no-skills"; mkdir -p "$SDW"
+expect "SD/66 连 .claude/skills 都没有（旧版静默 exit 0）" 66 bash "$SD" "$SDW"
+
+SDW2="$WORK/sd-empty"; mkdir -p "$SDW2/.claude/skills"
+expect "SD/66 skills 目录为空（旧版'已检查 0 条 / PASS'）" 66 bash "$SD" "$SDW2"
+
+SDW3="$WORK/sd-noskillmd"; mkdir -p "$SDW3/.claude/skills/foo"
+printf 'not a skill\n' > "$SDW3/.claude/skills/foo/README.md"
+expect "SD/66 有目录但无 SKILL.md" 66 bash "$SD" "$SDW3"
+
+SDW4="$WORK/sd-zeroref"; mkdir -p "$SDW4/.claude/skills/bar"
+printf -- '---\nname: bar\n---\n本 skill 正文不含任何路径引用。\n' > "$SDW4/.claude/skills/bar/SKILL.md"
+expect "SD/66 SKILL.md 抽出 0 条引用＝抽取失效，不是'无依赖'" 66 bash "$SD" "$SDW4"
+
+# 命令形式的引用必须被抽到（旧正则要求"整个反引号内容就是一条路径"，抽不到 → 假绿）
+SDW5="$WORK/sd-cmdref"; mkdir -p "$SDW5/.claude/skills/baz"
+printf -- '---\nname: baz\n---\n跑 `bash docs/process/NOT-EXIST.md` 与 scripts/lib/ghost.sh\n' \
+  > "$SDW5/.claude/skills/baz/SKILL.md"
+expect "SD/1 命令内引用的缺失依赖必须被抓到" 1 bash "$SD" "$SDW5"
+
+# 中文文件名不得被截断误报（白名单字符类版本会把 `docs/x/AI时代-调研.md` 截成 `docs/x/AI`）
+SDW6="$WORK/sd-cjk"; mkdir -p "$SDW6/.claude/skills/qux" "$SDW6/docs/research"
+printf 'x\n' > "$SDW6/docs/research/AI时代评审门禁-调研.md"
+printf -- '---\nname: qux\n---\n依据：`docs/research/AI时代评审门禁-调研.md`\n' \
+  > "$SDW6/.claude/skills/qux/SKILL.md"
+expect "SD/0 中文文件名不误报（正样本回归）" 0 bash "$SD" "$SDW6"
+
+# ---------- check-clause-refs 负样本（条款层 fail-open）----------
+echo "-- check-clause-refs.sh --"
+CR="$ROOT/scripts/check-clause-refs.sh"
+
+CRW="$WORK/cr-noconst"; mkdir -p "$CRW"
+expect "CR/66 无宪法文件（不得跳过）" 66 bash "$CR" "$CRW"
+
+CRW2="$WORK/cr-dangling"; mkdir -p "$CRW2/docs" "$CRW2/.claude"
+printf '# 宪法\n\n- **C1 x**。检查：y。\n- **C2 z**。检查：w。\n' > "$CRW2/docs/constitution.md"
+printf '按宪法 C14 检查批准归因；另见 C12（异构评审）。\n' > "$CRW2/.claude/agent.md"
+expect "CR/1 引用了未定义的 C12/C14（agent 会静默无约束继续）" 1 bash "$CR" "$CRW2"
+
+CRW3="$WORK/cr-badfmt"; mkdir -p "$CRW3/docs"
+printf '# 宪法\n\n条款格式变了，抽不出定义。\n' > "$CRW3/docs/constitution.md"
+expect "CR/66 抽出 0 条定义＝抽取失效，不是'宪法为空'" 66 bash "$CR" "$CRW3"
+
+# ---------- check-branch-protection 负样本（不触网的可测部分）----------
+# 这个探针必须真推远端才能出行为证明，故 PR 触发的 CI 不跑它（会写远端）。
+# 但它的**前置自检与降级路径**必须可证伪，且必须证明"不存在静默 exit 0"。
+echo "-- ops/check-branch-protection.sh --"
+BP="$ROOT/ops/check-branch-protection.sh"
+
+BPW="$WORK/bp-notgit"; mkdir -p "$BPW"
+( cd "$BPW" && bash "$BP" >/dev/null 2>&1 ); rc=$?
+total=$((total+1))
+if [ "$rc" = 66 ]; then echo "  ✅ BP/66 不在 git 工作区（自检失败，非静默）"
+else echo "  ❌ BP/66 不在 git 工作区（期望 66，实际 ${rc}）"; fails=$((fails+1)); fi
+
+# 关键性质：无论走哪条降级路径，**都不得 exit 0**（exit 0 只允许来自真实行为证明）
+BPW2="$WORK/bp-nogh"; mkdir -p "$BPW2"
+( cd "$BPW2" && PATH=/usr/bin:/bin bash "$BP" >/dev/null 2>&1 ); rc=$?
+total=$((total+1))
+if [ "$rc" != 0 ]; then echo "  ✅ BP/非0 gh 不可用时不得静默通过（实际 ${rc}）"
+else echo "  ❌ BP 在 gh 不可用时 exit 0 —— 静默通过"; fails=$((fails+1)); fi
+
+# ---------- 三通道契约：block 只能来自 deterministic（改门禁探针后的回归）----------
+# 起源：check-review.sh 原用**整行子串匹配**判违规，于是一条 source=deterministic
+# 的 finding 只要在「提出方」列写了 llm-advisory 就被误判。改为按列解析后，
+# 必须双向钉死：真违规仍抓得到（防改松），归属列提及不误判（防假阳性）。
+#
+# fixture **自包含**：早期版本依赖 specs/platform-pilot/review.md，该文件不存在时
+# 走"跳过"分支，套件照样报绿 —— 又一次静默通过。现在 fixture 就地构造，必须真跑。
+echo "-- check-review.sh 三通道契约（按列解析）--"
+CRV="$ROOT/.claude/skills/e2e-review/scripts/check-review.sh"
+CVW="$WORK/cv/specs/x"; mkdir -p "$CVW"
+
+printf -- '# TASKS：fixture\n\n- [x] T-1 做完了 ｜ SPEC-1 ｜ 复杂度 1 ｜ 依赖 - ｜ 验证：`true`\n' > "$CVW/tasks.md"
+
+cv_review() {  # cv_review <额外的 finding 行>
+  {
+    printf '# REVIEW：fixture\n\n## 定档结论\n\n- **风险档**：中\n- **依据**：fixture\n\n'
+    printf '## 覆盖声明\n\n- **已审**：a.sh\n- **未审及原因**：无\n\n'
+    printf '## Findings\n\n'
+    printf '| ID | severity | source | 类型 | 定位 | 问题 | 状态 | 证据 |\n'
+    printf '|---|---|---|---|---|---|---|---|\n'
+    printf '| F-1 | warn | deterministic | correctness | a.sh:1 | 基线条目 | fixed | `true` |\n'
+    printf '%s\n' "$1"
+    printf '\n## 异构评审\n\n异构评审: unavailable(fixture)\n\n'
+    printf -- '---\n门禁③ 记录：\n- 批准人：fixture\n- 决定：批准\n- 日期：2026-01-01\n- 备注：fixture\n'
+  } > "$CVW/review.md"
+}
+
+# 方向①：真违规（severity=block + source=llm-advisory）必须被抓
+cv_review '| F-99 | block | llm-advisory | correctness | a.sh:1 | LLM 声称必须阻断 | fixed | 无 |'
+total=$((total+1))
+if bash "$CRV" "$CVW/" --final 2>&1 | grep -q "违反三通道"; then
+  echo "  ✅ 真违规 block+llm-advisory 被抓到（门禁未被改松）"
+else
+  echo "  ❌ 真违规漏掉——三通道契约已失效"; fails=$((fails+1))
+fi
+
+# 方向②：source=deterministic 但归属列提及 llm-advisory，不得误判
+cv_review '| F-98 | block | deterministic | llm-advisory ×3 | correctness | a.sh:1 | 由 LLM 线索转化 | fixed | 负样本对旧实现失败 |'
+total=$((total+1))
+if bash "$CRV" "$CVW/" --final 2>&1 | grep -q "违反三通道"; then
+  echo "  ❌ 归属列提及 llm-advisory 被误判为违规（假阳性）"; fails=$((fails+1))
+else
+  echo "  ✅ 归属列提及不误判"
+fi
+
+# ---------- F-6 回归：行为探针不得碰工作区/索引 ----------
+# 起源：异构评审 + reviewer + security 三方独立指出 `git commit --allow-empty`
+# **会提交当前 index**。实测复现：暂存机密后跑探针，机密进了"空提交"；
+# 且 cleanup 的 branch -D 在**成功路径上也会**销毁那份暂存工作。
+# 这条把"不碰工作区"钉成可证伪断言：探针跑完后 index 与分支必须原样。
+echo "-- F-6 行为探针的副作用回归 --"
+BPREPO="$WORK/bp-sideeffect"
+mkdir -p "$BPREPO" && cd "$BPREPO"
+git init -q . && git config user.email t@t && git config user.name t
+echo base > a.txt && git add a.txt && git commit -qm base
+echo "STAGED-SECRET" > secret.txt && git add secret.txt
+IDX_BEFORE=$(git diff --cached --name-only | sort | tr '\n' ',')
+BR_BEFORE=$(git rev-parse --abbrev-ref HEAD)
+# 无 origin，探针会在推断仓库处 exit 2（降级），但**在此之前不得动索引**
+bash "$ROOT/ops/check-branch-protection.sh" >/dev/null 2>&1 || true
+IDX_AFTER=$(git diff --cached --name-only | sort | tr '\n' ',')
+BR_AFTER=$(git rev-parse --abbrev-ref HEAD)
+cd "$ROOT"
+total=$((total+1))
+if [ "${IDX_BEFORE}" = "${IDX_AFTER}" ] && [ "${BR_BEFORE}" = "${BR_AFTER}" ] \
+   && [ -f "$BPREPO/secret.txt" ]; then
+  echo "  ✅ BP 不碰索引/分支/工作区（索引 ${IDX_BEFORE} 原样，暂存文件仍在）"
+else
+  echo "  ❌ BP 有副作用：索引 [${IDX_BEFORE}]→[${IDX_AFTER}]，分支 ${BR_BEFORE}→${BR_AFTER}"
+  fails=$((fails+1))
+fi
+total=$((total+1))
+if git -C "$BPREPO" branch --list | grep -q '__e2e'; then
+  echo "  ❌ BP 残留临时分支"; fails=$((fails+1))
+else
+  echo "  ✅ BP 无残留临时分支"
+fi
+
+# ---------- F-11 回归：金丝雀必须能发现生产正则退化 ----------
+# 起源：reviewer + security 指出金丝雀用的正则与生产不是同一条，
+# 于是"生产正则写坏了金丝雀照样绿"。共用 PATH_RE 之后，本用例把该性质钉死：
+# 把生产 PATH_RE 改坏 → 金丝雀必须 exit 66，而不是继续跑出 PASS。
+echo "-- F-11 金丝雀能否发现引擎退化 --"
+SD_BROKEN="$WORK/check-skill-deps-broken.sh"
+sed -E "s|^PATH_RE=.*|PATH_RE='__NEVER_MATCHES_ANYTHING__'|" \
+    "$ROOT/scripts/check-skill-deps.sh" > "$SD_BROKEN"
+expect "SD/66 生产正则被改坏时金丝雀必须报警（而非静默 PASS）" 66 bash "$SD_BROKEN" "$ROOT"
+
 # ---------- ratchet 负样本（S5，独立脚本）----------
 echo "-- ratchet.sh --"
 expect "ratchet 六用例（含替换违规总数不变）" 0 bash "$ROOT/tests/probe-negative/ratchet-negative.sh"

@@ -20,6 +20,10 @@ jobs:
         run: bash scripts/check-structure.sh
       - name: 平台自审 · bash 高危写法
         run: bash scripts/check-shell-traps.sh
+      - name: skill 依赖存在性（防脚手架缺口导致静默跳过检查）
+        run: bash scripts/check-skill-deps.sh
+      - name: 宪法条款引用（防条款层 fail-open）
+        run: bash scripts/check-clause-refs.sh
       - name: 阶段0 探针（立项）
         run: bash .claude/skills/e2e-discovery/scripts/check-prfaq.sh "specs/$FEATURE/prfaq.md"
       - name: 阶段1 探针（需求）

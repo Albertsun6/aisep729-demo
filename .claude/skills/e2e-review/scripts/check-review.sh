@@ -37,7 +37,17 @@ if [ "$rows" -gt 0 ]; then
   [ "$bad_src" -eq 0 ] || { echo "MISSING: ${bad_src} 条 finding 的 source 不属三通道(deterministic/llm-advisory/llm-triage)"; missing=$((missing+1)); }
 
   # 三通道契约核心检查：block 级 finding 必须来自 deterministic 通道
-  bad_block=$(grep -E "^\| F-[0-9]+ \|" "$review" | grep "block" | grep -cE "llm-advisory" || true)
+  #
+  # 按**列**解析，不做整行子串匹配（整行匹配有假阳性：一条 source=deterministic 的
+  # finding 只要在别的列提到 "llm-advisory"（如「提出方」归属列、或问题描述里
+  # 引用了通道名）就会被误判为违规）。表列约定：$2=ID $3=severity $4=source。
+  # 收紧方向不变：severity 含 block 且 source 含 llm-advisory 才算违规。
+  bad_block=$(awk -F'|' '
+    /^\| F-[0-9]+ \|/ {
+      sev = $3; src = $4
+      if (sev ~ /block/ && src ~ /llm-advisory/) n++
+    }
+    END { print n+0 }' "$review")
   [ "$bad_block" -eq 0 ] || { echo "MISSING: ${bad_block} 条 block 级 finding 来自 llm-advisory 通道——违反三通道契约(LLM 无阻断权)"; missing=$((missing+1)); }
 
   # 状态必须是状态机五态之一
