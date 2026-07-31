@@ -34,9 +34,8 @@
 - **已审**：`.github/CODEOWNERS`、`docs/process/risk-tiers.md`、`ops/check-branch-protection.sh`、`scripts/check-skill-deps.sh`、`scripts/check-clause-refs.sh`、`docs/constitution.md`、`.github/workflows/quality-gates.yml`、`.gitignore`、7 个 `SKILL.md`、`tests/probe-negative/run.sh`、`specs/win-loss-log/tasks.md`
 - **未审及原因**：
   - `docs/demo-dark-mobile.png` —— 二进制截图，无逻辑；已人工目视确认为深色+窄屏渲染结果
-  - **Safari 行为（ADR-003 未验项）** —— 见下 §T-7，**当前不得声称跨浏览器可用**
-  - **完整历史 secret scan** —— 仓已公开但只做了当前内容扫描，未扫历史。转门禁④
-  - **LICENSE** —— 公开仓无许可证，使用权不清。转门禁④
+  - ~~完整历史 secret scan~~ —— **已于门禁④ 闭环**：gitleaks 全历史 0 leaks
+  - ~~LICENSE~~ —— **已于门禁④ 闭环**：MIT（用户裁决 2026-07-31）
 
 ## 通道① 确定性检查（唯一 blocker 来源，先于任何 LLM 评审执行）
 
@@ -78,12 +77,22 @@ CI 外环（PR #1，run 30602400358）四 job 全 `pass`：`process-gates` / `pr
 
 截图留痕：`docs/demo-screenshot.png`（浅色桌面）、`docs/demo-dark-mobile.png`（深色 390×844）
 
-### Safari —— **未验证**（诚实记录，不得含混）
+### Safari —— **已补验，全过**（门禁④ 期间完成，2026-07-31）
 
-- **状态**：**未跑**。尝试用 `osascript` 自动化被系统授权对话框阻断（Safari 的"允许 Apple 事件中的 JavaScript"默认关闭），非交互会话无法通过。
-- **处置**：按 ADR-003 原定路径转入**门禁④ 人工 checklist**，由人在 Safari 里逐条跑 C1–C11。
-- **约束**：在该项完成前，**任何文档、手册、演示材料均不得声称"跨浏览器可用"**。ADR-003 已记载 Safari 对 `file://` 存储更严格，存在 localStorage 被拒的真实可能。
-- **若不成立时的处置**（预先写死，防事后找补）：Safari 若拒绝 `file://` 的 localStorage，则 `save()` 返回 `false`，UI 走已实现的"⚠️ 本次数据未能保存"分支——**功能降级但不静默丢数据**；届时在 prfaq FAQ 与手册"已知限制"补记 Safari 不可用。
+评审当时状态为"未验证"，转门禁④ 人工项。用户开启「允许 Apple 事件中的 JavaScript」后，
+用 `osascript` 驱动 Safari 实跑，结果**推翻了 ADR-003 原来的担心**：
+
+| 断言 | 判定 | 证据 |
+|---|---|---|
+| Safari 对 `file://` 更严格，可能拒绝 localStorage | ❌ **REFUTED** | `LS_可写: true`，写入后 `err` 为空（未走降级分支） |
+| 刷新后持久化 | ✅ CONFIRMED | `[{"schemaVersion":1,…,"amount":777}]` |
+| 同机其它本地页可读同一存储（隐私代价） | ✅ **CONFIRMED，与 Chrome 一致** | `/tmp/other-page.html` 完整读到该条赌博记录 |
+| C1-C11 功能项 | ✅ 全过 | `协议: file:` `UA: Safari`，三层加载/三屏切换/校验/汇总/隐私声明/无横向溢出 全 ✓ |
+
+**结论变更**：「未验证前不得声称跨浏览器可用」的限制**已解除**——可声称
+"macOS 上 Chrome 与 Safari 均实测可用"；**仍不得**声称 Windows / Linux / 移动端（未测）。
+隐私措辞**反而应加强**：跨浏览器一致成立，不是某个浏览器的特例。
+详见 `docs/architecture/adr/ADR-003-*.md` 的追加记录。测试数据已清理（`localStorage.length === 0`）。
 
 ## Findings
 

@@ -1,0 +1,14 @@
+# Dependabot —— 供应链更新（宪法 C15）
+#
+# 为什么本仓需要它：产品运行时确无第三方依赖（单文件 HTML，零外链），
+# 但 **GitHub Actions 本身就是一个依赖生态**，且它**不需要任何 manifest 文件**。
+# 门禁④ 评审指出：把 SCA 整体标 N/A 是错的——CI 供应链是真实攻击面。
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Action 已 SHA-pin，Dependabot 会连注释里的版本一起更新
+    commit-message:
+      prefix: "chore(deps)"
